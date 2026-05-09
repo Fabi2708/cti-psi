@@ -1,6 +1,6 @@
 # Private Set Intersection for Threat Intelligence Sharing
 
- This repository contains a simple implementation of **Private Set Intersection (PSI)** using real-world cyber threat intelligence data.
+This repository contains a simple implementation of **Private Set Intersection (PSI)** using real-world cyber threat intelligence data.
 
 The project demonstrates how two parties can identify shared Indicators of Compromise (IOCs) without revealing their complete datasets to one another.
 
