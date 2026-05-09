@@ -8,7 +8,6 @@ The datasets used in this project originate from [abuse.ch ThreatFox](https://th
 
 The PSI implementation is written in **C** using the [libsodium cryptographic library](https://libsodium.org/).
 
----
 
 ## Overview
 
@@ -21,7 +20,6 @@ This repository simulates that scenario using IOC datasets split between two par
 - Alice
 - Bob
 
----
 
 ## Technologies Used
 
@@ -30,7 +28,6 @@ This repository simulates that scenario using IOC datasets split between two par
 - [libsodium](https://libsodium.org/)
 - CSV/TXT datasets
 
----
 
 ## Dataset
 
@@ -47,7 +44,6 @@ The preprocessing scripts clean and extract IOC values such as:
 
 The cleaned dataset is then split into separate datasets representing two organisations participating in PSI.
 
----
 
 ## PSI Scenario
 
@@ -58,7 +54,6 @@ This project simulates a threat intelligence sharing environment where:
 
 Using Private Set Intersection, both parties can identify overlapping malicious indicators without exposing their full threat intelligence feeds.
 
----
 
 ## Running the Project
 
@@ -74,7 +69,6 @@ gcc psi.c -lsodium -o psi
 ./psi
 ```
 
----
 
 ## Preprocessing Workflow
 
@@ -97,7 +91,6 @@ This generates:
 - `alice_dataset.txt`
 - `bob_dataset.txt`
 
----
 
 ## Purpose
 
@@ -108,20 +101,6 @@ This repository was created for educational and research purposes related to:
 - Cyber threat intelligence sharing
 - Cybersecurity research
 
----
-
-## Future Improvements
-
-Potential future work includes:
-
-- Bloom Filter optimisation
-- Diffie–Hellman-based PSI
-- Intel SGX integration
-- Performance benchmarking
-- False positive analysis
-- Large-scale dataset testing
-
----
 
 ## References
 
