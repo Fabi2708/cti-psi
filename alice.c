@@ -149,6 +149,11 @@ int main() {
         }
     }
 
+    if (send_all(sock, bob_double, bob_size * 32) != 0) {
+        fprintf(stderr, "send bob_double failed\n");
+        return 1;
+    }
+
     printf("\n----- Intersection -----\n");
 
     int found = 0;
