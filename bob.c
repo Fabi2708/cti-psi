@@ -1,7 +1,3 @@
-// ============================
-// Bob (Server)
-// ============================
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -18,7 +14,10 @@ int send_all(int sock, const void *buffer, size_t length) {
     size_t total = 0;
     while (total < length) {
         ssize_t sent = send(sock, (const char*)buffer + total, length - total, 0);
-        if (sent <= 0) return -1;
+        if (sent <= 0) {
+            fprintf(stderr, "send_all failed\n");
+            return -1;
+        }
         total += sent;
     }
     return 0;
@@ -28,7 +27,10 @@ int recv_all(int sock, void *buffer, size_t length) {
     size_t total = 0;
     while (total < length) {
         ssize_t rec = recv(sock, (char*)buffer + total, length - total, 0);
-        if (rec <= 0) return -1;
+        if (rec <= 0) {
+            fprintf(stderr, "recv_all failed\n");
+            return -1;
+        }
         total += rec;
     }
     return 0;
@@ -46,24 +48,34 @@ int recv_int(int sock, int *v) {
     return 0;
 }
 
-// ---------- HASH ----------
+// ---------- HASH TO RISTRETTO POINT ----------
 
-void hash_to_scalar(unsigned char out[32], const char *in) {
-    crypto_generichash(out, 32,
+void hash_to_point(unsigned char out[32], const char *in) {
+
+    unsigned char h[64];
+
+    if (crypto_generichash(h, sizeof(h),
         (const unsigned char*)in,
         strlen(in),
-        NULL, 0);
+        NULL, 0) != 0) {
+        fprintf(stderr, "generichash failed\n");
+        return;
+    }
 
-    out[0]  &= 248;
-    out[31] &= 127;
-    out[31] |= 64;
+    if (crypto_core_ristretto255_from_hash(out, h) != 0) {
+        fprintf(stderr, "ristretto hash-to-point failed\n");
+        return;
+    }
 }
 
 // ---------- DATA ----------
 
 int read_dataset(const char *file, char set[][MAX_LINE]) {
     FILE *f = fopen(file, "r");
-    if (!f) return -1;
+    if (!f) {
+        fprintf(stderr, "file open failed\n");
+        return -1;
+    }
 
     int n = 0;
     while (fgets(set[n], MAX_LINE, f)) {
@@ -94,7 +106,6 @@ int main() {
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
-
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(PORT);
@@ -121,22 +132,24 @@ int main() {
 
     // ---------- DATA ----------
     char bob_set[MAX_ITEMS][MAX_LINE];
-    int bob_size = read_dataset("bob_dataset.txt", bob_set);
 
+    int bob_size = read_dataset("bob_dataset.txt", bob_set);
     if (bob_size < 0) {
-        fprintf(stderr, "dataset failed\n");
+        fprintf(stderr, "dataset load failed\n");
         return 1;
     }
 
     unsigned char bob_blinded[MAX_ITEMS][32];
 
-    // ---------- STEP 1 ----------
+    // ---------- STEP 1: bH(y) ----------
     for (int i = 0; i < bob_size; i++) {
-        unsigned char h[32];
-        hash_to_scalar(h, bob_set[i]);
 
-        if (crypto_scalarmult(bob_blinded[i], b, h) != 0) {
-            fprintf(stderr, "blinding failed\n");
+        unsigned char p[32];
+
+        hash_to_point(p, bob_set[i]);
+
+        if (crypto_scalarmult(bob_blinded[i], b, p) != 0) {
+            fprintf(stderr, "bob blinding failed at %d\n", i);
             return 1;
         }
     }
@@ -149,7 +162,7 @@ int main() {
         return 1;
     }
 
-    if (alice_size < 0 || alice_size > MAX_ITEMS) {
+    if (alice_size <= 0 || alice_size > MAX_ITEMS) {
         fprintf(stderr, "invalid alice_size\n");
         return 1;
     }
@@ -165,13 +178,14 @@ int main() {
     unsigned char alice_double[MAX_ITEMS][32];
 
     for (int i = 0; i < alice_size; i++) {
+
         if (crypto_scalarmult(alice_double[i], b, alice_blinded[i]) != 0) {
-            fprintf(stderr, "alice_double failed\n");
+            fprintf(stderr, "alice double failed at %d\n", i);
             return 1;
         }
     }
 
-    // ---------- STEP 4 SEND ----------
+    // ---------- STEP 4 SEND BACK ----------
     if (send_int(client_fd, bob_size) != 0) {
         fprintf(stderr, "send bob_size failed\n");
         return 1;
@@ -187,7 +201,7 @@ int main() {
         return 1;
     }
 
-    // ---------- STEP 5 RECEIVE INTERSECTION ----------
+    // ---------- STEP 5 RECEIVE RESULT ----------
     int intersection_count;
 
     if (recv_int(client_fd, &intersection_count) != 0) {
@@ -200,7 +214,7 @@ int main() {
         return 1;
     }
 
-    printf("\n----- Intersection (from Alice) -----\n");
+    char intersection[MAX_ITEMS][MAX_LINE];
 
     for (int i = 0; i < intersection_count; i++) {
 
@@ -216,15 +230,23 @@ int main() {
             return 1;
         }
 
-        char buf[MAX_LINE];
-
-        if (recv_all(client_fd, buf, len) != 0) {
-            fprintf(stderr, "recv string failed\n");
+        if (recv_all(client_fd, intersection[i], len) != 0) {
+            fprintf(stderr, "recv intersection item failed\n");
             return 1;
         }
 
-        buf[len] = '\0';
-        printf("%s\n", buf);
+        intersection[i][len] = '\0';
+    }
+
+    // ---------- OUTPUT ----------
+    printf("\n----- Intersection (from Alice) -----\n");
+
+    if (intersection_count == 0) {
+        printf("No intersection found.\n");
+    } else {
+        for (int i = 0; i < intersection_count; i++) {
+            printf("%s\n", intersection[i]);
+        }
     }
 
     close(client_fd);
