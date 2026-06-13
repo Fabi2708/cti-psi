@@ -153,8 +153,24 @@ int main() {
         fprintf(stderr, "send bob_blinded failed\n");
         return 1;
     }
+    unsigned char bob_double[MAX_ITEMS][32];
+    if (recv_all(client_fd, bob_double, bob_size * 32) != 0) {
+        fprintf(stderr, "recv bob_double failed\n");
+        return 1;
+    }
+     printf("\n----- Intersection -----\n");
 
-    printf("Done.\n");
+    int found = 0;
+    for (int i = 0; i < alice_size; i++) {
+        for (int j = 0; j < bob_size; j++) {
+            if (memcmp(bob_double[i], alice_double[j], 32) == 0) {
+                printf("Intersection found: %s\n", bob_set[i]);
+                found = 1;
+            }
+        }
+    }
+
+    if (!found) printf("No intersection found.\n");
 
     close(client_fd);
     close(server_fd);
