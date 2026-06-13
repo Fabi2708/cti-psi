@@ -1,7 +1,3 @@
-// ============================
-// Alice (Client)
-// ============================
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -18,7 +14,10 @@ int send_all(int sock, const void *buffer, size_t length) {
     size_t total = 0;
     while (total < length) {
         ssize_t sent = send(sock, (const char*)buffer + total, length - total, 0);
-        if (sent <= 0) return -1;
+        if (sent <= 0) {
+            fprintf(stderr, "send_all failed\n");
+            return -1;
+        }
         total += sent;
     }
     return 0;
@@ -28,7 +27,10 @@ int recv_all(int sock, void *buffer, size_t length) {
     size_t total = 0;
     while (total < length) {
         ssize_t rec = recv(sock, (char*)buffer + total, length - total, 0);
-        if (rec <= 0) return -1;
+        if (rec <= 0) {
+            fprintf(stderr, "recv_all failed\n");
+            return -1;
+        }
         total += rec;
     }
     return 0;
@@ -46,24 +48,34 @@ int recv_int(int sock, int *v) {
     return 0;
 }
 
-// ---------- HASH ----------
+// ---------- HASH TO RISTRETTO POINT ----------
 
-void hash_to_scalar(unsigned char out[32], const char *in) {
-    crypto_generichash(out, 32,
+void hash_to_point(unsigned char out[32], const char *in) {
+
+    unsigned char h[64];
+
+    if (crypto_generichash(h, sizeof(h),
         (const unsigned char*)in,
         strlen(in),
-        NULL, 0);
+        NULL, 0) != 0) {
+        fprintf(stderr, "generichash failed\n");
+        return;
+    }
 
-    out[0]  &= 248;
-    out[31] &= 127;
-    out[31] |= 64;
+    if (crypto_core_ristretto255_from_hash(out, h) != 0) {
+        fprintf(stderr, "ristretto hash-to-point failed\n");
+        return;
+    }
 }
 
 // ---------- DATA ----------
 
 int read_dataset(const char *file, char set[][MAX_LINE]) {
     FILE *f = fopen(file, "r");
-    if (!f) return -1;
+    if (!f) {
+        fprintf(stderr, "file open failed\n");
+        return -1;
+    }
 
     int n = 0;
     while (fgets(set[n], MAX_LINE, f)) {
@@ -113,8 +125,8 @@ int main() {
 
     // ---------- DATA ----------
     char alice_set[MAX_ITEMS][MAX_LINE];
-    int alice_size = read_dataset("alice_dataset.txt", alice_set);
 
+    int alice_size = read_dataset("alice_dataset.txt", alice_set);
     if (alice_size < 0) {
         fprintf(stderr, "dataset load failed\n");
         return 1;
@@ -122,13 +134,15 @@ int main() {
 
     unsigned char alice_blinded[MAX_ITEMS][32];
 
-    // ---------- STEP 1 ----------
+    // ---------- STEP 1: aH(x) ----------
     for (int i = 0; i < alice_size; i++) {
-        unsigned char h[32];
-        hash_to_scalar(h, alice_set[i]);
 
-        if (crypto_scalarmult(alice_blinded[i], a, h) != 0) {
-            fprintf(stderr, "blinding failed\n");
+        unsigned char p[32];
+
+        hash_to_point(p, alice_set[i]);
+
+        if (crypto_scalarmult(alice_blinded[i], a, p) != 0) {
+            fprintf(stderr, "alice blinding failed at %d\n", i);
             return 1;
         }
     }
@@ -152,7 +166,7 @@ int main() {
         return 1;
     }
 
-    if (bob_size < 0 || bob_size > MAX_ITEMS) {
+    if (bob_size <= 0 || bob_size > MAX_ITEMS) {
         fprintf(stderr, "invalid bob_size\n");
         return 1;
     }
@@ -174,8 +188,9 @@ int main() {
     unsigned char bob_double[MAX_ITEMS][32];
 
     for (int i = 0; i < bob_size; i++) {
+
         if (crypto_scalarmult(bob_double[i], a, bob_blinded[i]) != 0) {
-            fprintf(stderr, "bob_double failed\n");
+            fprintf(stderr, "bob double failed at %d\n", i);
             return 1;
         }
     }
@@ -187,6 +202,7 @@ int main() {
 
     for (int i = 0; i < alice_size; i++) {
         for (int j = 0; j < bob_size; j++) {
+
             if (memcmp(alice_double[i], bob_double[j], 32) == 0) {
 
                 if (intersection_count >= MAX_ITEMS) {
