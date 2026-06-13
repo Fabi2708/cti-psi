@@ -88,10 +88,11 @@ int main() {
         perror("connect");
         return 1;
     }
-
+    //Alice secret
     unsigned char alice_private[32];
     randombytes_buf(alice_private, 32);
 
+    //Load dataset
     char alice_set[MAX_ITEMS][MAX_LINE];
     int alice_size = read_dataset("alice_dataset.txt", alice_set);
     if (alice_size < 0) {
@@ -101,6 +102,7 @@ int main() {
 
     unsigned char alice_blinded[MAX_ITEMS][32];
 
+    //Step 1: H(x)^a
     for (int i = 0; i < alice_size; i++) {
         unsigned char p[32];
         hash_to_scalar(p, alice_set[i]);
@@ -111,6 +113,7 @@ int main() {
         }
     }
 
+    //Step 2: Send blinded set
     if (send_all(sock, &alice_size, sizeof(int)) != 0) {
         fprintf(stderr, "send alice_size failed\n");
         return 1;
@@ -121,14 +124,15 @@ int main() {
         return 1;
     }
 
+    //Step 3: receive results from bob
     int bob_size;
     if (recv_all(sock, &bob_size, sizeof(int)) != 0) {
         fprintf(stderr, "recv bob_size failed\n");
         return 1;
     }
 
-    unsigned char alice_double[MAX_ITEMS][32];
-    unsigned char bob_blinded[MAX_ITEMS][32];
+    unsigned char alice_double[MAX_ITEMS][32]; // H(x)^ab
+    unsigned char bob_blinded[MAX_ITEMS][32]; //H(x)^b
 
     if (recv_all(sock, alice_double, alice_size * 32) != 0) {
         fprintf(stderr, "recv alice_double failed\n");
@@ -140,6 +144,7 @@ int main() {
         return 1;
     }
 
+    //Step 4: compute H(y)^ab
     unsigned char bob_double[MAX_ITEMS][32];
 
     for (int i = 0; i < bob_size; i++) {
@@ -153,20 +158,35 @@ int main() {
         fprintf(stderr, "send bob_double failed\n");
         return 1;
     }
-
+    //Step 5: intersection
     printf("\n----- Intersection -----\n");
-
+    int intersection_count = 0;
+    char intersection [MAX_ITEMS][MAX_LINE];
     int found = 0;
     for (int i = 0; i < alice_size; i++) {
         for (int j = 0; j < bob_size; j++) {
             if (memcmp(alice_double[i], bob_double[j], 32) == 0) {
                 printf("Intersection found: %s\n", alice_set[i]);
+                strcpy(intersection[intersection_count],alice_set[i]);
+                intersection_count++;
                 found = 1;
             }
         }
     }
 
-    if (!found) printf("No intersection found.\n");
+    if (!found) {
+        printf("No intersection found.\n");
+    }
+    else{
+        if(send_all(sock, &intersection_count, sizeof(int)) != 0){
+             fprintf(stderr, "send intersection size failed\n");
+            return 1;
+        }
+        if(send_all(sock, intersection, intersection_count * MAX_LINE) != 0){
+             fprintf(stderr, "send intersection size failed\n");
+            return 1;
+        }
+    }
 
     close(sock);
     sodium_memzero(alice_private, 32);

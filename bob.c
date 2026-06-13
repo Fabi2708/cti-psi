@@ -95,10 +95,11 @@ int main() {
         perror("accept");
         return 1;
     }
-
+    //Bob secret
     unsigned char bob_private[32];
     randombytes_buf(bob_private, 32);
 
+    //Load Dataset
     char bob_set[MAX_ITEMS][MAX_LINE];
     int bob_size = read_dataset("bob_dataset.txt", bob_set);
     if (bob_size < 0) {
@@ -108,6 +109,7 @@ int main() {
 
     unsigned char bob_blinded[MAX_ITEMS][32];
 
+    //Step 1: H(y)^b
     for (int i = 0; i < bob_size; i++) {
         unsigned char p[32];
         hash_to_scalar(p, bob_set[i]);
@@ -117,7 +119,7 @@ int main() {
             return 1;
         }
     }
-
+    //Step 2: receive ALice blinded set
     int alice_size;
     if (recv_all(client_fd, &alice_size, sizeof(int)) != 0) {
         fprintf(stderr, "recv alice_size failed\n");
@@ -129,7 +131,7 @@ int main() {
         fprintf(stderr, "recv alice_blinded failed\n");
         return 1;
     }
-
+    //Step 3: compute H(x)^ab
     unsigned char alice_double[MAX_ITEMS][32];
 
     for (int i = 0; i < alice_size; i++) {
@@ -138,7 +140,7 @@ int main() {
             return 1;
         }
     }
-
+    //Step 4: send results back
     if (send_all(client_fd, &bob_size, sizeof(int)) != 0) {
         fprintf(stderr, "send bob_size failed\n");
         return 1;
@@ -153,25 +155,26 @@ int main() {
         fprintf(stderr, "send bob_blinded failed\n");
         return 1;
     }
-    unsigned char bob_double[MAX_ITEMS][32];
-    if (recv_all(client_fd, bob_double, bob_size * 32) != 0) {
-        fprintf(stderr, "recv bob_double failed\n");
+    //Step 5: Display intersection computed by Alice
+    int intersection_count = 0;
+    if(recv_all(client_fd, &intersection_count, sizeof(int)) != 0){
+        fprintf(stderr, "recv intersection_count failed\n");
         return 1;
     }
-     printf("\n----- Intersection -----\n");
-
-    int found = 0;
-    for (int i = 0; i < alice_size; i++) {
-        for (int j = 0; j < bob_size; j++) {
-            if (memcmp(bob_double[i], alice_double[j], 32) == 0) {
-                printf("Intersection found: %s\n", bob_set[i]);
-                found = 1;
-            }
+    char intersection[MAX_ITEMS][MAX_LINE];
+    if(recv_all(client_fd,intersection, intersection_count * MAX_LINE) != 0){
+        fprintf(stderr, "recv intersection failed\n");
+        return 1;
+    }
+    printf("\n----- Intersection (received from Alice) -----\n");
+    if (intersection_count == 0){
+        printf("No intersection found.\n");
+    }
+    else{
+        for(int i = 0; i < intersection_count; i++){
+            printf("Intersection found: %s\n", intersection[i]);
         }
     }
-
-    if (!found) printf("No intersection found.\n");
-
     close(client_fd);
     close(server_fd);
     sodium_memzero(bob_private, 32);
