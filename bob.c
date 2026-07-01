@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sodium.h>
+#include <time.h>
+#include <linux/time.h>
 
 #define PORT 8080
 #define MAX_ITEMS 400
@@ -87,6 +89,23 @@ int read_dataset(const char *file, char set[][MAX_LINE]) {
     return n;
 }
 
+double elapsed_ms(struct timespec start, struct timespec end){
+    return(end.tv_sec - start.tv_sec) * 1000.0 +
+          (end.tv_nsec - start.tv_nsec) / 1000000.0;  
+}
+
+typedef struct{
+    int dataset_size;
+    double hash_ms;
+    double blind_ms;
+    double double_blind_ms;
+    double recv_process_ms;
+    double send_ms;
+    double recv_ms;
+    double intersection_ms;
+    double total_ms;
+}Metrics;
+
 // ============================
 // MAIN
 // ============================
@@ -97,6 +116,10 @@ int main() {
         fprintf(stderr, "sodium_init failed\n");
         return 1;
     }
+
+    Metrics bob = {0};
+    bob.dataset_size = 0;
+    struct timespec start, end, total_start,total_end;
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
@@ -138,7 +161,7 @@ int main() {
         fprintf(stderr, "dataset load failed\n");
         return 1;
     }
-
+    clock_gettime(CLOCK_MONOTONIC, &total_start);
     unsigned char bob_blinded[MAX_ITEMS][32];
 
     // ---------- STEP 1: bH(y) ----------
@@ -146,17 +169,23 @@ int main() {
 
         unsigned char p[32];
 
+        clock_gettime(CLOCK_MONOTONIC, &start);
         hash_to_point(p, bob_set[i]);
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        bob.hash_ms += elapsed_ms(start,end);
 
+        clock_gettime(CLOCK_MONOTONIC, &start);
         if (crypto_scalarmult(bob_blinded[i], b, p) != 0) {
             fprintf(stderr, "bob blinding failed at %d\n", i);
             return 1;
         }
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        bob.blind_ms += elapsed_ms(start,end);
     }
 
     // ---------- STEP 2 RECEIVE ----------
     int alice_size;
-
+    clock_gettime(CLOCK_MONOTONIC, &start);
     if (recv_int(client_fd, &alice_size) != 0) {
         fprintf(stderr, "recv alice_size failed\n");
         return 1;
@@ -173,19 +202,24 @@ int main() {
         fprintf(stderr, "recv alice_blinded failed\n");
         return 1;
     }
+    clock_gettime(CLOCK_MONOTONIC,&end);
+    bob.recv_ms += elapsed_ms(start,end);
 
     // ---------- STEP 3 COMPUTE ----------
     unsigned char alice_double[MAX_ITEMS][32];
 
     for (int i = 0; i < alice_size; i++) {
-
+        clock_gettime(CLOCK_MONOTONIC,&start);
         if (crypto_scalarmult(alice_double[i], b, alice_blinded[i]) != 0) {
             fprintf(stderr, "alice double failed at %d\n", i);
             return 1;
         }
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        bob.recv_process_ms += elapsed_ms(start,end);
     }
 
     // ---------- STEP 4 SEND BACK ----------
+    clock_gettime(CLOCK_MONOTONIC, &start);
     if (send_int(client_fd, bob_size) != 0) {
         fprintf(stderr, "send bob_size failed\n");
         return 1;
@@ -200,10 +234,12 @@ int main() {
         fprintf(stderr, "send bob_blinded failed\n");
         return 1;
     }
+    clock_gettime(CLOCK_MONOTONIC,&end);
+    bob.send_ms += elapsed_ms(start,end);
 
     // ---------- STEP 5 RECEIVE RESULT ----------
     int intersection_count;
-
+    clock_gettime(CLOCK_MONOTONIC, &start);
     if (recv_int(client_fd, &intersection_count) != 0) {
         fprintf(stderr, "recv intersection_count failed\n");
         return 1;
@@ -237,7 +273,8 @@ int main() {
 
         intersection[i][len] = '\0';
     }
-
+    clock_gettime(CLOCK_MONOTONIC,&end);
+    bob.intersection_ms += elapsed_ms(start,end);
     // ---------- OUTPUT ----------
     printf("\n----- Intersection (from Alice) -----\n");
 
@@ -248,7 +285,13 @@ int main() {
             printf("%s\n", intersection[i]);
         }
     }
-
+    clock_gettime(CLOCK_MONOTONIC,&total_end);
+    bob.total_ms += elapsed_ms(start,end);
+    //---------- Send Metrics ----------
+    if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
+        fprintf(stderr, "send bob metrics failed\n");
+        return 1;
+    }
     close(client_fd);
     close(server_fd);
     sodium_memzero(b, 32);

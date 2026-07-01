@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sodium.h>
+#include <time.h>
+#include <linux/time.h>
 
 #define PORT 8080
 #define MAX_ITEMS 400
@@ -87,6 +89,22 @@ int read_dataset(const char *file, char set[][MAX_LINE]) {
     return n;
 }
 
+double elapsed_ms(struct timespec start, struct timespec end){
+    return(end.tv_sec - start.tv_sec) * 1000.0 +
+          (end.tv_nsec - start.tv_nsec) / 1000000.0;  
+}
+
+typedef struct{
+    int dataset_size;
+    double hash_ms;
+    double blind_ms;
+    double double_blind_ms;
+    double recv_process_ms;
+    double send_ms;
+    double recv_ms;
+    double intersection_ms;
+    double total_ms;
+}Metrics;
 // ============================
 // MAIN
 // ============================
@@ -98,6 +116,10 @@ int main() {
         return 1;
     }
 
+    Metrics alice = {0};
+    alice.dataset_size = 0;
+    struct timespec start, end, total_start,total_end;
+    
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         fprintf(stderr, "socket failed\n");
@@ -131,7 +153,8 @@ int main() {
         fprintf(stderr, "dataset load failed\n");
         return 1;
     }
-
+    clock_gettime(CLOCK_MONOTONIC, &total_start);
+    
     unsigned char alice_blinded[MAX_ITEMS][32];
 
     // ---------- STEP 1: aH(x) ----------
@@ -139,15 +162,22 @@ int main() {
 
         unsigned char p[32];
 
+        clock_gettime(CLOCK_MONOTONIC, &start);
         hash_to_point(p, alice_set[i]);
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        alice.hash_ms += elapsed_ms(start,end);
 
+        clock_gettime(CLOCK_MONOTONIC, &start);
         if (crypto_scalarmult(alice_blinded[i], a, p) != 0) {
             fprintf(stderr, "alice blinding failed at %d\n", i);
             return 1;
         }
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        alice.blind_ms += elapsed_ms(start,end);
     }
 
     // ---------- STEP 2 SEND ----------
+    clock_gettime(CLOCK_MONOTONIC, &start);
     if (send_int(sock, alice_size) != 0) {
         fprintf(stderr, "send alice_size failed\n");
         return 1;
@@ -157,10 +187,13 @@ int main() {
         fprintf(stderr, "send alice_blinded failed\n");
         return 1;
     }
+    clock_gettime(CLOCK_MONOTONIC,&end);
+    alice.send_ms += elapsed_ms(start,end);
 
     // ---------- STEP 3 RECEIVE ----------
     int bob_size;
 
+    clock_gettime(CLOCK_MONOTONIC, &start);
     if (recv_int(sock, &bob_size) != 0) {
         fprintf(stderr, "recv bob_size failed\n");
         return 1;
@@ -183,23 +216,26 @@ int main() {
         fprintf(stderr, "recv bob_blinded failed\n");
         return 1;
     }
-
+    clock_gettime(CLOCK_MONOTONIC,&end);
+    alice.recv_ms += elapsed_ms(start,end);
     // ---------- STEP 4 COMPUTE ----------
     unsigned char bob_double[MAX_ITEMS][32];
 
     for (int i = 0; i < bob_size; i++) {
-
+        clock_gettime(CLOCK_MONOTONIC,&start);
         if (crypto_scalarmult(bob_double[i], a, bob_blinded[i]) != 0) {
             fprintf(stderr, "bob double failed at %d\n", i);
             return 1;
         }
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        alice.recv_process_ms += elapsed_ms(start,end);
     }
 
     // ---------- STEP 5 INTERSECTION ----------
     char intersection[MAX_ITEMS][MAX_LINE];
     int intersection_count = 0;
     int found = 0;
-
+    clock_gettime(CLOCK_MONOTONIC, &start);
     for (int i = 0; i < alice_size; i++) {
         for (int j = 0; j < bob_size; j++) {
 
@@ -216,6 +252,8 @@ int main() {
             }
         }
     }
+    clock_gettime(CLOCK_MONOTONIC,&end);
+    alice.intersection_ms += elapsed_ms(start,end);
 
     printf("\n----- Intersection -----\n");
 
@@ -247,9 +285,15 @@ int main() {
             return 1;
         }
     }
-
+    // Metrics bob;
+    //  if (recv_all(sock, &bob, sizeof(Metrics)) != 0) {
+    //     fprintf(stderr, "recv bob_blinded failed\n");
+    //     return 1;
+    // }
     close(sock);
     sodium_memzero(a, 32);
+    clock_gettime(CLOCK_MONOTONIC,&total_end);
+    alice.total_ms += elapsed_ms(start,end);
 
     return 0;
 }
