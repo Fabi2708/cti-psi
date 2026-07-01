@@ -1,10 +1,10 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sodium.h>
 #include <time.h>
-#include <linux/time.h>
 
 #define PORT 8080
 #define MAX_ITEMS 400
@@ -99,7 +99,6 @@ typedef struct{
     double hash_ms;
     double blind_ms;
     double double_blind_ms;
-    double recv_process_ms;
     double send_ms;
     double recv_ms;
     double intersection_ms;
@@ -153,6 +152,7 @@ int main() {
         fprintf(stderr, "dataset load failed\n");
         return 1;
     }
+    alice.dataset_size = alice_size;
     clock_gettime(CLOCK_MONOTONIC, &total_start);
     
     unsigned char alice_blinded[MAX_ITEMS][32];
@@ -228,7 +228,7 @@ int main() {
             return 1;
         }
         clock_gettime(CLOCK_MONOTONIC,&end);
-        alice.recv_process_ms += elapsed_ms(start,end);
+        alice.double_blind_ms += elapsed_ms(start,end);
     }
 
     // ---------- STEP 5 INTERSECTION ----------
@@ -293,14 +293,26 @@ int main() {
     close(sock);
     sodium_memzero(a, 32);
     clock_gettime(CLOCK_MONOTONIC,&total_end);
-    alice.total_ms += elapsed_ms(start,end);
+    alice.total_ms += elapsed_ms(total_start,total_end);
 
     FILE *csv = fopen("results.csv", "a");
+    if(csv == NULL){
+        fprintf(stderr, "failed to open csv\n");
+        return 1;
+    }
+    fseek(csv, 0, SEEK_END);
+    long size = ftell(csv);
+    if (size == 0) {
+    fprintf(csv,
+        "dataset_size,"
+        "alice_hash,alice_blind,alice_double_blind,alice_send,alice_recv,alice_intersection,alice_total,"
+        "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total\n");
+    }
 
     fprintf(csv,
     "%d,"
     "%f,%f,%f,%f,%f,%f,%f,"
-    "%f,%f,%f,%f,%f,%f\n",
+    "%f,%f,%f,%f,%f,%f,%f\n",
     
     alice.dataset_size,
     
