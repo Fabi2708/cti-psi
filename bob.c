@@ -1,10 +1,10 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sodium.h>
 #include <time.h>
-#include <linux/time.h>
 
 #define PORT 8080
 #define MAX_ITEMS 400
@@ -99,7 +99,6 @@ typedef struct{
     double hash_ms;
     double blind_ms;
     double double_blind_ms;
-    double recv_process_ms;
     double send_ms;
     double recv_ms;
     double intersection_ms;
@@ -162,6 +161,7 @@ int main() {
         return 1;
     }
     clock_gettime(CLOCK_MONOTONIC, &total_start);
+    bob.dataset_size = bob_size;
     unsigned char bob_blinded[MAX_ITEMS][32];
 
     // ---------- STEP 1: bH(y) ----------
@@ -215,7 +215,7 @@ int main() {
             return 1;
         }
         clock_gettime(CLOCK_MONOTONIC,&end);
-        bob.recv_process_ms += elapsed_ms(start,end);
+        bob.double_blind_ms += elapsed_ms(start,end);
     }
 
     // ---------- STEP 4 SEND BACK ----------
@@ -286,7 +286,7 @@ int main() {
         }
     }
     clock_gettime(CLOCK_MONOTONIC,&total_end);
-    bob.total_ms += elapsed_ms(start,end);
+    bob.total_ms += elapsed_ms(total_start,total_end);
     //---------- Send Metrics ----------
     if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
         fprintf(stderr, "send bob metrics failed\n");
