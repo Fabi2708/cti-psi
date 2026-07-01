@@ -285,15 +285,42 @@ int main() {
             return 1;
         }
     }
-    // Metrics bob;
-    //  if (recv_all(sock, &bob, sizeof(Metrics)) != 0) {
-    //     fprintf(stderr, "recv bob_blinded failed\n");
-    //     return 1;
-    // }
+    Metrics bob;
+     if (recv_all(sock, &bob, sizeof(Metrics)) != 0) {
+        fprintf(stderr, "recv bob_blinded failed\n");
+        return 1;
+    }
     close(sock);
     sodium_memzero(a, 32);
     clock_gettime(CLOCK_MONOTONIC,&total_end);
     alice.total_ms += elapsed_ms(start,end);
+
+    FILE *csv = fopen("results.csv", "a");
+
+    fprintf(csv,
+    "%d,"
+    "%f,%f,%f,%f,%f,%f,%f,"
+    "%f,%f,%f,%f,%f,%f\n",
+    
+    alice.dataset_size,
+    
+    alice.hash_ms,
+    alice.blind_ms,
+    alice.double_blind_ms,
+    alice.send_ms,
+    alice.recv_ms,
+    alice.intersection_ms,
+    alice.total_ms,
+    
+    bob.hash_ms,
+    bob.blind_ms,
+    bob.double_blind_ms,
+    bob.send_ms,
+    bob.recv_ms,
+    bob.intersection_ms,
+    bob.total_ms);
+    
+    fclose(csv);
 
     return 0;
 }
