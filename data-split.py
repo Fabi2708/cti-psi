@@ -1,22 +1,47 @@
 import random
+import os
 
+# Read and remove duplicates
 with open("cleaned.txt", "r") as f:
-    data = list(set(line.strip() for line in f))
+    data = list(set(line.strip() for line in f if line.strip()))
 
 random.shuffle(data)
 
-#split
-shared = data[:80]
-alice_only = data[80:320]
-bob_only = data[320:640]
+sizes = [100, 200, 300, 400]
+overlaps = [0, 25, 50, 75]
 
-alice = shared + alice_only
-bob = shared + bob_only
+os.makedirs("datasets", exist_ok=True)
 
-#save
+for size in sizes:
+    for overlap in overlaps:
 
-with open("alice_dataset.txt", "w") as f:
-    f.write("\n".join(alice))
+        shared = int(size * overlap / 100)
 
-with open("bob_dataset.txt", "w") as f:
-    f.write("\n".join(bob))
+        unique = size - shared
+
+        required = shared + unique + unique
+
+        if required > len(data):
+            raise ValueError(
+                f"Not enough IOCs for size={size}, overlap={overlap}%"
+            )
+
+        random.shuffle(data)
+
+        shared_items = data[:shared]
+        alice_unique = data[shared:shared + unique]
+        bob_unique = data[shared + unique:required]
+
+        alice = shared_items + alice_unique
+        bob = shared_items + bob_unique
+
+        random.shuffle(alice)
+        random.shuffle(bob)
+
+        with open(f"datasets/alice_{size}_{overlap}.txt", "w") as f:
+            f.write("\n".join(alice))
+
+        with open(f"datasets/bob_{size}_{overlap}.txt", "w") as f:
+            f.write("\n".join(bob))
+
+print("Finished generating datasets.")
