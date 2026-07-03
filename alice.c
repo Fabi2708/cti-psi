@@ -143,6 +143,7 @@ int main() {
                 }
                 send_int(sock,size);
                 send_int(sock,overlap);
+                int stop = 0;
                 // ---------- SECRET ----------
                 unsigned char a[32];
                 randombytes_buf(a, 32);
@@ -294,6 +295,10 @@ int main() {
                     fprintf(stderr, "recv bob_blinded failed\n");
                     return 1;
                 }
+                if(size == 400 && overlap == 75 && run == 29){
+                    stop = 1;
+                }
+                send_int(sock,stop);
                 close(sock);
                 sodium_memzero(a, 32);
                 clock_gettime(CLOCK_MONOTONIC,&total_end);
@@ -308,18 +313,18 @@ int main() {
                 long size = ftell(csv);
                 if (size == 0) {
                 fprintf(csv,
-                    "dataset_size,"
+                    "dataset_size,overlap,"
                     "alice_hash,alice_blind,alice_double_blind,alice_send,alice_recv,alice_intersection,alice_total,"
                     "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total\n");
                 }
 
                 fprintf(csv,
-                "%d,"
+                "%d,%d,"
                 "%f,%f,%f,%f,%f,%f,%f,"
                 "%f,%f,%f,%f,%f,%f,%f\n",
                 
                 alice.dataset_size,
-                
+                overlap,
                 alice.hash_ms,
                 alice.blind_ms,
                 alice.double_blind_ms,
