@@ -105,6 +105,11 @@ typedef struct{
     double total_ms;
 }Metrics;
 
+typedef struct{
+    int size;
+    int overlap;
+}TestInfo;
+
 // ============================
 // MAIN
 // ============================
@@ -115,10 +120,6 @@ int main() {
         fprintf(stderr, "sodium_init failed\n");
         return 1;
     }
-
-    Metrics bob = {0};
-    bob.dataset_size = 0;
-    struct timespec start, end, total_start,total_end;
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
@@ -142,159 +143,171 @@ int main() {
         return 1;
     }
 
-    int client_fd = accept(server_fd, NULL, NULL);
-    if (client_fd < 0) {
-        fprintf(stderr, "accept failed\n");
-        return 1;
-    }
+    while(1){
+        int client_fd = accept(server_fd, NULL, NULL);
+        if (client_fd < 0) {
+            fprintf(stderr, "accept failed\n");
+            return 1;
+        }
+        TestInfo info;
+        if(recv_all(client_fd, &info, sizeof(TestInfo)) != 0){
+            close(client_fd);
+            continue;;
+        }
+        // ---------- SECRET ----------
+        unsigned char b[32];
+        randombytes_buf(b, 32);
 
-    // ---------- SECRET ----------
-    unsigned char b[32];
-    randombytes_buf(b, 32);
+        Metrics bob = {0};
+        bob.dataset_size = 0;
+        struct timespec start, end, total_start,total_end;
 
-    // ---------- DATA ----------
-    char bob_set[MAX_ITEMS][MAX_LINE];
+        // ---------- DATA ----------
+        char bob_set[MAX_ITEMS][MAX_LINE];
+        char filename[100];
+        sprintf(filename, "datasets/bob_%d_%d.txt", info.size,info.overlap);
 
-    int bob_size = read_dataset("bob_dataset.txt", bob_set);
-    if (bob_size < 0) {
-        fprintf(stderr, "dataset load failed\n");
-        return 1;
-    }
-    clock_gettime(CLOCK_MONOTONIC, &total_start);
-    bob.dataset_size = bob_size;
-    unsigned char bob_blinded[MAX_ITEMS][32];
+        int bob_size = read_dataset(filename, bob_set);
+        if (bob_size < 0) {
+            fprintf(stderr, "dataset load failed\n");
+            return 1;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &total_start);
+        bob.dataset_size = bob_size;
+        unsigned char bob_blinded[MAX_ITEMS][32];
 
-    // ---------- STEP 1: bH(y) ----------
-    for (int i = 0; i < bob_size; i++) {
+        // ---------- STEP 1: bH(y) ----------
+        for (int i = 0; i < bob_size; i++) {
 
-        unsigned char p[32];
+            unsigned char p[32];
 
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            hash_to_point(p, bob_set[i]);
+            clock_gettime(CLOCK_MONOTONIC,&end);
+            bob.hash_ms += elapsed_ms(start,end);
+
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            if (crypto_scalarmult(bob_blinded[i], b, p) != 0) {
+                fprintf(stderr, "bob blinding failed at %d\n", i);
+                return 1;
+            }
+            clock_gettime(CLOCK_MONOTONIC,&end);
+            bob.blind_ms += elapsed_ms(start,end);
+        }
+
+        // ---------- STEP 2 RECEIVE ----------
+        int alice_size;
         clock_gettime(CLOCK_MONOTONIC, &start);
-        hash_to_point(p, bob_set[i]);
-        clock_gettime(CLOCK_MONOTONIC,&end);
-        bob.hash_ms += elapsed_ms(start,end);
+        if (recv_int(client_fd, &alice_size) != 0) {
+            fprintf(stderr, "recv alice_size failed\n");
+            return 1;
+        }
 
+        if (alice_size <= 0 || alice_size > MAX_ITEMS) {
+            fprintf(stderr, "invalid alice_size\n");
+            return 1;
+        }
+
+        unsigned char alice_blinded[MAX_ITEMS][32];
+
+        if (recv_all(client_fd, alice_blinded, alice_size * 32) != 0) {
+            fprintf(stderr, "recv alice_blinded failed\n");
+            return 1;
+        }
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        bob.recv_ms += elapsed_ms(start,end);
+
+        // ---------- STEP 3 COMPUTE ----------
+        unsigned char alice_double[MAX_ITEMS][32];
+
+        for (int i = 0; i < alice_size; i++) {
+            clock_gettime(CLOCK_MONOTONIC,&start);
+            if (crypto_scalarmult(alice_double[i], b, alice_blinded[i]) != 0) {
+                fprintf(stderr, "alice double failed at %d\n", i);
+                return 1;
+            }
+            clock_gettime(CLOCK_MONOTONIC,&end);
+            bob.double_blind_ms += elapsed_ms(start,end);
+        }
+
+        // ---------- STEP 4 SEND BACK ----------
         clock_gettime(CLOCK_MONOTONIC, &start);
-        if (crypto_scalarmult(bob_blinded[i], b, p) != 0) {
-            fprintf(stderr, "bob blinding failed at %d\n", i);
+        if (send_int(client_fd, bob_size) != 0) {
+            fprintf(stderr, "send bob_size failed\n");
+            return 1;
+        }
+
+        if (send_all(client_fd, alice_double, alice_size * 32) != 0) {
+            fprintf(stderr, "send alice_double failed\n");
+            return 1;
+        }
+
+        if (send_all(client_fd, bob_blinded, bob_size * 32) != 0) {
+            fprintf(stderr, "send bob_blinded failed\n");
             return 1;
         }
         clock_gettime(CLOCK_MONOTONIC,&end);
-        bob.blind_ms += elapsed_ms(start,end);
-    }
+        bob.send_ms += elapsed_ms(start,end);
 
-    // ---------- STEP 2 RECEIVE ----------
-    int alice_size;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    if (recv_int(client_fd, &alice_size) != 0) {
-        fprintf(stderr, "recv alice_size failed\n");
-        return 1;
-    }
-
-    if (alice_size <= 0 || alice_size > MAX_ITEMS) {
-        fprintf(stderr, "invalid alice_size\n");
-        return 1;
-    }
-
-    unsigned char alice_blinded[MAX_ITEMS][32];
-
-    if (recv_all(client_fd, alice_blinded, alice_size * 32) != 0) {
-        fprintf(stderr, "recv alice_blinded failed\n");
-        return 1;
-    }
-    clock_gettime(CLOCK_MONOTONIC,&end);
-    bob.recv_ms += elapsed_ms(start,end);
-
-    // ---------- STEP 3 COMPUTE ----------
-    unsigned char alice_double[MAX_ITEMS][32];
-
-    for (int i = 0; i < alice_size; i++) {
-        clock_gettime(CLOCK_MONOTONIC,&start);
-        if (crypto_scalarmult(alice_double[i], b, alice_blinded[i]) != 0) {
-            fprintf(stderr, "alice double failed at %d\n", i);
-            return 1;
-        }
-        clock_gettime(CLOCK_MONOTONIC,&end);
-        bob.double_blind_ms += elapsed_ms(start,end);
-    }
-
-    // ---------- STEP 4 SEND BACK ----------
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    if (send_int(client_fd, bob_size) != 0) {
-        fprintf(stderr, "send bob_size failed\n");
-        return 1;
-    }
-
-    if (send_all(client_fd, alice_double, alice_size * 32) != 0) {
-        fprintf(stderr, "send alice_double failed\n");
-        return 1;
-    }
-
-    if (send_all(client_fd, bob_blinded, bob_size * 32) != 0) {
-        fprintf(stderr, "send bob_blinded failed\n");
-        return 1;
-    }
-    clock_gettime(CLOCK_MONOTONIC,&end);
-    bob.send_ms += elapsed_ms(start,end);
-
-    // ---------- STEP 5 RECEIVE RESULT ----------
-    int intersection_count;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    if (recv_int(client_fd, &intersection_count) != 0) {
-        fprintf(stderr, "recv intersection_count failed\n");
-        return 1;
-    }
-
-    if (intersection_count < 0 || intersection_count > MAX_ITEMS) {
-        fprintf(stderr, "invalid intersection_count\n");
-        return 1;
-    }
-
-    char intersection[MAX_ITEMS][MAX_LINE];
-
-    for (int i = 0; i < intersection_count; i++) {
-
-        int len;
-
-        if (recv_int(client_fd, &len) != 0) {
-            fprintf(stderr, "recv len failed\n");
+        // ---------- STEP 5 RECEIVE RESULT ----------
+        int intersection_count;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        if (recv_int(client_fd, &intersection_count) != 0) {
+            fprintf(stderr, "recv intersection_count failed\n");
             return 1;
         }
 
-        if (len <= 0 || len >= MAX_LINE) {
-            fprintf(stderr, "invalid string length\n");
+        if (intersection_count < 0 || intersection_count > MAX_ITEMS) {
+            fprintf(stderr, "invalid intersection_count\n");
             return 1;
         }
 
-        if (recv_all(client_fd, intersection[i], len) != 0) {
-            fprintf(stderr, "recv intersection item failed\n");
-            return 1;
-        }
+        char intersection[MAX_ITEMS][MAX_LINE];
 
-        intersection[i][len] = '\0';
-    }
-    clock_gettime(CLOCK_MONOTONIC,&end);
-    bob.intersection_ms += elapsed_ms(start,end);
-    // ---------- OUTPUT ----------
-    printf("\n----- Intersection (from Alice) -----\n");
-
-    if (intersection_count == 0) {
-        printf("No intersection found.\n");
-    } else {
         for (int i = 0; i < intersection_count; i++) {
-            printf("%s\n", intersection[i]);
-        }
-    }
-    clock_gettime(CLOCK_MONOTONIC,&total_end);
-    bob.total_ms += elapsed_ms(total_start,total_end);
-    //---------- Send Metrics ----------
-    if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
-        fprintf(stderr, "send bob metrics failed\n");
-        return 1;
-    }
-    close(client_fd);
-    close(server_fd);
-    sodium_memzero(b, 32);
 
+            int len;
+
+            if (recv_int(client_fd, &len) != 0) {
+                fprintf(stderr, "recv len failed\n");
+                return 1;
+            }
+
+            if (len <= 0 || len >= MAX_LINE) {
+                fprintf(stderr, "invalid string length\n");
+                return 1;
+            }
+
+            if (recv_all(client_fd, intersection[i], len) != 0) {
+                fprintf(stderr, "recv intersection item failed\n");
+                return 1;
+            }
+
+            intersection[i][len] = '\0';
+        }
+        clock_gettime(CLOCK_MONOTONIC,&end);
+        bob.intersection_ms += elapsed_ms(start,end);
+        // ---------- OUTPUT ----------
+        printf("\n----- Intersection (from Alice) -----\n");
+
+        if (intersection_count == 0) {
+            printf("No intersection found.\n");
+        } else {
+            for (int i = 0; i < intersection_count; i++) {
+                printf("%s\n", intersection[i]);
+            }
+        }
+        clock_gettime(CLOCK_MONOTONIC,&total_end);
+        bob.total_ms += elapsed_ms(total_start,total_end);
+        //---------- Send Metrics ----------
+        if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
+            fprintf(stderr, "send bob metrics failed\n");
+            return 1;
+        }
+        close(client_fd);
+        sodium_memzero(b, 32);
+
+    }
+    close(server_fd);
     return 0;
 }
