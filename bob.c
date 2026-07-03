@@ -108,6 +108,7 @@ typedef struct{
 typedef struct{
     int size;
     int overlap;
+    int stop;
 }TestInfo;
 
 // ============================
@@ -150,10 +151,8 @@ int main() {
             return 1;
         }
         TestInfo info;
-        if(recv_all(client_fd, &info, sizeof(TestInfo)) != 0){
-            close(client_fd);
-            continue;;
-        }
+        recv_int(client_fd, &info.size);
+        recv_int(client_fd,&info.overlap);
         // ---------- SECRET ----------
         unsigned char b[32];
         randombytes_buf(b, 32);
@@ -303,6 +302,12 @@ int main() {
         if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
             fprintf(stderr, "send bob metrics failed\n");
             return 1;
+        }
+        recv_int(client_fd, &info.stop);
+        if(info.stop == 1){
+            printf("Stopping server...\n");
+            close(client_fd);
+            break;
         }
         close(client_fd);
         sodium_memzero(b, 32);
