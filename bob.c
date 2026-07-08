@@ -103,6 +103,8 @@ typedef struct{
     double recv_ms;
     double intersection_ms;
     double total_ms;
+    size_t communication_sent;
+    size_t communication_received;
 }Metrics;
 
 typedef struct{
@@ -111,6 +113,8 @@ typedef struct{
     int stop;
 }TestInfo;
 
+size_t bytes_sent = 0;
+size_t bytes_recv = 0;
 // ============================
 // MAIN
 // ============================
@@ -145,6 +149,8 @@ int main() {
     }
 
     while(1){
+        bytes_sent = 0;
+        bytes_recv = 0;
         int client_fd = accept(server_fd, NULL, NULL);
         if (client_fd < 0) {
             fprintf(stderr, "accept failed\n");
@@ -213,6 +219,8 @@ int main() {
             fprintf(stderr, "recv alice_blinded failed\n");
             return 1;
         }
+        bytes_recv += sizeof(int);
+        bytes_recv += alice_size * 32;
         clock_gettime(CLOCK_MONOTONIC,&end);
         bob.recv_ms += elapsed_ms(start,end);
 
@@ -245,6 +253,9 @@ int main() {
             fprintf(stderr, "send bob_blinded failed\n");
             return 1;
         }
+        bytes_sent += sizeof(int);
+        bytes_sent += alice_size * 32;
+        bytes_sent += bob_size * 32;
         clock_gettime(CLOCK_MONOTONIC,&end);
         bob.send_ms += elapsed_ms(start,end);
 
@@ -299,6 +310,8 @@ int main() {
         clock_gettime(CLOCK_MONOTONIC,&total_end);
         bob.total_ms += elapsed_ms(total_start,total_end);
         //---------- Send Metrics ----------
+        bob.communication_sent = bytes_sent;
+        bob.communication_received = bytes_recv;
         if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
             fprintf(stderr, "send bob metrics failed\n");
             return 1;

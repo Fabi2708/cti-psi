@@ -103,9 +103,12 @@ typedef struct{
     double recv_ms;
     double intersection_ms;
     double total_ms;
-    size_t alice_bytes_sent;
-    size_t alice_bytes_recv;
+    size_t communication_sent;
+    size_t communication_recv;
 }Metrics;
+
+size_t alice_bytes_sent = 0;
+size_t alice_bytes_recv = 0;
 // ============================
 // MAIN
 // ============================
@@ -121,8 +124,8 @@ int main() {
             for(int run = 0; run < 30; run++){
                 Metrics alice = {0};
                 alice.dataset_size = 0;
-                alice.alice_bytes_recv = 0;
-                alice.alice_bytes_sent = 0;
+                alice_bytes_recv = 0;
+                alice_bytes_sent = 0;
                 struct timespec start, end, total_start,total_end;
                 
                 int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -192,7 +195,7 @@ int main() {
                     fprintf(stderr, "send alice_size failed\n");
                     return 1;
                 }
-                alice.alice_bytes_sent += alice_size * 32;
+                alice_bytes_sent += alice_size * 32;
                 if (send_all(sock, alice_blinded, alice_size * 32) != 0) {
                     fprintf(stderr, "send alice_blinded failed\n");
                     return 1;
@@ -208,7 +211,7 @@ int main() {
                     fprintf(stderr, "recv bob_size failed\n");
                     return 1;
                 }
-                alice.alice_bytes_recv += sizeof(int);
+                alice_bytes_recv += sizeof(int);
                 if (bob_size <= 0 || bob_size > MAX_ITEMS) {
                     fprintf(stderr, "invalid bob_size\n");
                     return 1;
@@ -216,12 +219,12 @@ int main() {
 
                 unsigned char alice_double[MAX_ITEMS][32];
                 unsigned char bob_blinded[MAX_ITEMS][32];
-                alice.alice_bytes_recv += alice_size * 32;
+                alice_bytes_recv += alice_size * 32;
                 if (recv_all(sock, alice_double, alice_size * 32) != 0) {
                     fprintf(stderr, "recv alice_double failed\n");
                     return 1;
                 }
-                alice.alice_bytes_recv += bob_size * 32;
+                alice_bytes_recv += bob_size * 32;
                 if (recv_all(sock, bob_blinded, bob_size * 32) != 0) {
                     fprintf(stderr, "recv bob_blinded failed\n");
                     return 1;
@@ -318,20 +321,18 @@ int main() {
                 long size = ftell(csv);
                 if (size == 0) {
                 fprintf(csv,
-                    "dataset_size,overlap,alice_bytes_sent,alice_bytes_recv,"
+                    "dataset_size,overlap,"
                     "alice_hash,alice_blind,alice_double_blind,alice_send,alice_recv,alice_intersection,alice_total,"
-                    "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total\n");
+                    "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total,alice_bytes_sent,alice_bytes_recv,bob_bytes_sent,bob_bytes_recv\n");
                 }
 
                 fprintf(csv,
-                "%d,%d,%d,%d,"
+                "%d,%d,"
                 "%f,%f,%f,%f,%f,%f,%f,"
-                "%f,%f,%f,%f,%f,%f,%f\n",
+                "%f,%f,%f,%f,%f,%f,%f,%zu,%zu,%zu,%zu\n",
                 
                 alice.dataset_size,
                 overlap,
-                alice.alice_bytes_sent,
-                alice.alice_bytes_recv,
                 alice.hash_ms,
                 alice.blind_ms,
                 alice.double_blind_ms,
@@ -346,7 +347,11 @@ int main() {
                 bob.send_ms,
                 bob.recv_ms,
                 bob.intersection_ms,
-                bob.total_ms);
+                bob.total_ms,
+                alice_bytes_sent,
+                alice_bytes_recv,
+                bob.communication_sent,
+                bob.communication_recv);
                 
                 fclose(csv);
             }
