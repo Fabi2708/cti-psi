@@ -190,7 +190,7 @@ int main() {
 
                 // ---------- STEP 2 SEND ----------
                 clock_gettime(CLOCK_MONOTONIC, &start);
-                
+                alice_bytes_sent += sizeof(int);
                 if (send_int(sock, alice_size) != 0) {
                     fprintf(stderr, "send alice_size failed\n");
                     return 1;
