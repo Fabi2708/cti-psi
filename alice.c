@@ -342,7 +342,7 @@ int main() {
                     "dataset_size,overlap,"
                     "alice_hash,alice_blind,alice_double_blind,alice_send,alice_recv,alice_intersection,alice_total,"
                     "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total,alice_bytes_sent,alice_bytes_recv,bob_bytes_sent,bob_bytes_recv,"
-                    "alice_memory_kb,bob_memory_kb,\n");
+                    "alice_memory_kb,bob_memory_kb\n");
                 }
 
                 fprintf(csv,
