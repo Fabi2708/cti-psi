@@ -10,6 +10,22 @@
 #define MAX_ITEMS 400
 #define MAX_LINE 256
 
+long get_memory_usage(){
+    FILE *file = fopen("/proc/self/status", "r");
+    if(file == NULL)
+        return -1;
+    char line[256];
+    long memory = 0;
+    while(fgets(line, sizeof(line), file)){
+        if(strncmp(line, "VmHWM:", 6) == 0){
+            sscanf(line, "VmHWM: %ld", &memory);
+            break;
+        }
+    }
+    fclose(file);
+    return memory; // KB
+}
+
 // ---------- SAFE IO ----------
 
 int send_all(int sock, const void *buffer, size_t length) {
@@ -105,6 +121,7 @@ typedef struct{
     double total_ms;
     size_t communication_sent;
     size_t communication_recv;
+    long peak_memory_kb;
 }Metrics;
 
 size_t alice_bytes_sent = 0;
@@ -311,6 +328,7 @@ int main() {
                 sodium_memzero(a, 32);
                 clock_gettime(CLOCK_MONOTONIC,&total_end);
                 alice.total_ms = elapsed_ms(total_start,total_end);
+                alice.peak_memory_kb = get_memory_usage();
 
                 FILE *csv = fopen("results.csv", "a");
                 if(csv == NULL){
@@ -323,13 +341,14 @@ int main() {
                 fprintf(csv,
                     "dataset_size,overlap,"
                     "alice_hash,alice_blind,alice_double_blind,alice_send,alice_recv,alice_intersection,alice_total,"
-                    "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total,alice_bytes_sent,alice_bytes_recv,bob_bytes_sent,bob_bytes_recv\n");
+                    "bob_hash,bob_blind,bob_double_blind,bob_send,bob_recv,bob_intersection,bob_total,alice_bytes_sent,alice_bytes_recv,bob_bytes_sent,bob_bytes_recv,"
+                    "alice_memory_kb,bob_memory_kb"\n");
                 }
 
                 fprintf(csv,
                 "%d,%d,"
                 "%f,%f,%f,%f,%f,%f,%f,"
-                "%f,%f,%f,%f,%f,%f,%f,%zu,%zu,%zu,%zu\n",
+                "%f,%f,%f,%f,%f,%f,%f,%zu,%zu,%zu,%zu,%ld,%ld\n",
                 
                 alice.dataset_size,
                 overlap,
@@ -351,7 +370,9 @@ int main() {
                 alice_bytes_sent,
                 alice_bytes_recv,
                 bob.communication_sent,
-                bob.communication_recv);
+                bob.communication_recv,
+                alice.peak_memory_kb,
+                bob.peak_memory_kb);
                 
                 fclose(csv);
             }
