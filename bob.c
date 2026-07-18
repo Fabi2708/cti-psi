@@ -10,6 +10,22 @@
 #define MAX_ITEMS 400
 #define MAX_LINE 256
 
+long get_memory_usage(){
+    FILE *file = fopen("/proc/self/status", "r");
+    if(file == NULL)
+        return -1;
+    char line[256];
+    long memory = 0;
+    while(fgets(line, sizeof(line), file)){
+        if(strncmp(line, "VmHWM:", 6) == 0){
+            sscanf(line, "VmHWM: %ld", &memory);
+            break;
+        }
+    }
+    fclose(file);
+    return memory; // KB
+}
+
 // ---------- SAFE IO ----------
 
 int send_all(int sock, const void *buffer, size_t length) {
@@ -105,6 +121,7 @@ typedef struct{
     double total_ms;
     size_t communication_sent;
     size_t communication_received;
+    long peak_memory_kb;
 }Metrics;
 
 typedef struct{
@@ -312,6 +329,7 @@ int main() {
         //---------- Send Metrics ----------
         bob.communication_sent = bytes_sent;
         bob.communication_received = bytes_recv;
+        bob.peak_memory_kb = get_memory_usage();
         if(send_all(client_fd, &bob ,sizeof(Metrics)) != 0){
             fprintf(stderr, "send bob metrics failed\n");
             return 1;
