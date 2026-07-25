@@ -290,7 +290,8 @@ int main() {
         }
 
         char intersection[MAX_ITEMS][MAX_LINE];
-
+        
+        bytes_recv += sizeof(int);
         for (int i = 0; i < intersection_count; i++) {
 
             int len;
@@ -304,7 +305,9 @@ int main() {
                 fprintf(stderr, "invalid string length\n");
                 return 1;
             }
-
+            bytes_recv += sizeof(int); // length
+            bytes_recv += len;
+            
             if (recv_all(client_fd, intersection[i], len) != 0) {
                 fprintf(stderr, "recv intersection item failed\n");
                 return 1;
