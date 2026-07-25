@@ -296,6 +296,7 @@ int main() {
                 }
 
                 // ---------- STEP 6 SEND RESULT ----------
+                alice_bytes_sent += sizeof(int);
                 if (send_int(sock, intersection_count) != 0) {
                     fprintf(stderr, "send intersection_count failed\n");
                     return 1;
@@ -304,6 +305,8 @@ int main() {
                 for (int i = 0; i < intersection_count; i++) {
 
                     int len = strlen(intersection[i]);
+                    alice_bytes_sent += sizeof(int); // length field
+                    alice_bytes_sent += len;
 
                     if (send_int(sock, len) != 0) {
                         fprintf(stderr, "send len failed\n");
