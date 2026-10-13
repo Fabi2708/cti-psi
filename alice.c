@@ -156,7 +156,7 @@ int main() {
                 addr.sin_family = AF_INET;
                 addr.sin_port = htons(PORT);
 
-                if (inet_pton(AF_INET, "10.0.2.9", &addr.sin_addr) != 1) {
+                if (inet_pton(AF_INET, "10.0.2.15", &addr.sin_addr) != 1) {
                     fprintf(stderr, "inet_pton failed\n");
                     return 1;
                 }
@@ -169,8 +169,8 @@ int main() {
                 send_int(sock,overlap);
                 int stop = 0;
                 // ---------- SECRET ----------
-                unsigned char a[32];
-                randombytes_buf(a, 32);
+                unsigned char a[crypto_core_ristretto255_SCALARBYTES];
+                crypto_core_ristretto255_scalar_random(a);
 
                 // ---------- DATA ----------
                 char alice_set[MAX_ITEMS][MAX_LINE];
@@ -197,7 +197,7 @@ int main() {
                     alice.hash_ms += elapsed_ms(start,end);
 
                     clock_gettime(CLOCK_MONOTONIC, &start);
-                    if (crypto_scalarmult(alice_blinded[i], a, p) != 0) {
+                    if (crypto_scalarmult_ristretto255(alice_blinded[i], a, p) != 0) {
                         fprintf(stderr, "alice blinding failed at %d\n", i);
                         return 1;
                     }
@@ -253,7 +253,7 @@ int main() {
 
                 for (int i = 0; i < bob_size; i++) {
                     clock_gettime(CLOCK_MONOTONIC,&start);
-                    if (crypto_scalarmult(bob_double[i], a, bob_blinded[i]) != 0) {
+                    if (crypto_scalarmult_ristretto255(bob_double[i], a, bob_blinded[i]) != 0) {
                         fprintf(stderr, "bob double failed at %d\n", i);
                         return 1;
                     }
