@@ -177,8 +177,8 @@ int main() {
         recv_int(client_fd, &info.size);
         recv_int(client_fd,&info.overlap);
         // ---------- SECRET ----------
-        unsigned char b[32];
-        randombytes_buf(b, 32);
+        unsigned char b[crypto_core_ristretto255_SCALARBYTES];
+        crypto_core_ristretto255_scalar_random(b);
 
         Metrics bob = {0};
         bob.dataset_size = 0;
@@ -209,7 +209,7 @@ int main() {
             bob.hash_ms += elapsed_ms(start,end);
 
             clock_gettime(CLOCK_MONOTONIC, &start);
-            if (crypto_scalarmult(bob_blinded[i], b, p) != 0) {
+            if (crypto_scalarmult_ristretto255(bob_blinded[i], b, p) != 0) {
                 fprintf(stderr, "bob blinding failed at %d\n", i);
                 return 1;
             }
@@ -246,7 +246,7 @@ int main() {
 
         for (int i = 0; i < alice_size; i++) {
             clock_gettime(CLOCK_MONOTONIC,&start);
-            if (crypto_scalarmult(alice_double[i], b, alice_blinded[i]) != 0) {
+            if (crypto_scalarmult_ristretto255(alice_double[i], b, alice_blinded[i]) != 0) {
                 fprintf(stderr, "alice double failed at %d\n", i);
                 return 1;
             }
