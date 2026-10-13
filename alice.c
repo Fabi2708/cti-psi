@@ -156,7 +156,7 @@ int main() {
                 addr.sin_family = AF_INET;
                 addr.sin_port = htons(PORT);
 
-                if (inet_pton(AF_INET, "10.0.2.15", &addr.sin_addr) != 1) {
+                if (inet_pton(AF_INET, "10.0.2.3", &addr.sin_addr) != 1) {
                     fprintf(stderr, "inet_pton failed\n");
                     return 1;
                 }
